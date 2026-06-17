@@ -1,0 +1,18 @@
+
+@import "tailwindcss";
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #020617; /* slate-950 — avoids a white flash before hydration */
+}
+

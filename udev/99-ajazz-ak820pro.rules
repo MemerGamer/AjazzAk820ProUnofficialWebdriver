@@ -1,0 +1,6 @@
+# Grant the logged-in desktop user access to the wired Ajazz AK820 Pro
+# (Microdia/SONiX, 0c45:8009) HID interfaces, so Chrome/WebHID can open it.
+# Install:
+#   sudo cp udev/99-ajazz-ak820pro.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+KERNEL=="hidraw*", ATTRS{idVendor}=="0c45", ATTRS{idProduct}=="8009", MODE="0660", GROUP="input", TAG+="uaccess"
