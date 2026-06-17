@@ -2,9 +2,13 @@
  * Approximate AK820 Pro 75% layout for the on-screen preview.
  *
  * This is a *visual* mock — legends and widths aim for recognizability, not
- * pixel accuracy. The volume knob and TFT screen sit in the top-right corner
- * and are rendered as separate elements (see `KeyboardPreview`); the function
- * row is intentionally short so it doesn't run under them.
+ * pixel accuracy.  The physical keyboard's right side has four zones rendered
+ * separately in KeyboardPreview:
+ *   1. Delete key — end of the function row in KEY_ROWS[0]
+ *   2. C/W/B connection-mode LED strip
+ *   3. Nav column (Home / PgUp / PgDn) + TFT screen below
+ *   4. Encoder knob (top-right corner)
+ * Home/PgUp/PgDn are therefore NOT at the end of rows 1-3 here.
  */
 
 export interface KeyDef {
@@ -13,50 +17,66 @@ export interface KeyDef {
   w?: number
   /** Marks the wide/odd keys so we can de-emphasize their legend if needed. */
   wide?: boolean
+  /** Extra left margin in key units — used for function-key group gaps and the nav-column separator. */
+  gapBefore?: number
 }
 
-/** Rows top-to-bottom. The right-hand nav column lives at the end of rows 1–5. */
+/**
+ * Rows top-to-bottom.
+ * - Function row: standard group gaps + Delete as the last key (matches physical board)
+ * - Rows 1-3: no nav key at the end — Home/PgUp/PgDn live in the separate nav column
+ * - Shift row: ends with ↑ only (no End)
+ * - Bottom row: Ctrl before the arrow cluster (matches physical board)
+ */
 export const KEY_ROWS: KeyDef[][] = [
+  // Function row — Esc | F1-F4 | F5-F8 | F9-F12 | Del
   [
     { label: 'Esc' },
-    { label: 'F1' }, { label: 'F2' }, { label: 'F3' }, { label: 'F4' },
-    { label: 'F5' }, { label: 'F6' }, { label: 'F7' }, { label: 'F8' },
-    { label: 'F9' }, { label: 'F10' }, { label: 'F11' }, { label: 'F12' },
+    { label: 'F1', gapBefore: 0.5 }, { label: 'F2' }, { label: 'F3' }, { label: 'F4' },
+    { label: 'F5', gapBefore: 0.5 }, { label: 'F6' }, { label: 'F7' }, { label: 'F8' },
+    { label: 'F9', gapBefore: 0.5 }, { label: 'F10' }, { label: 'F11' }, { label: 'F12' },
+    { label: 'Del', gapBefore: 0.5 },
   ],
+  // Number row — no nav key; Home is in the separate nav column
   [
     { label: '`' }, { label: '1' }, { label: '2' }, { label: '3' },
     { label: '4' }, { label: '5' }, { label: '6' }, { label: '7' },
     { label: '8' }, { label: '9' }, { label: '0' }, { label: '-' },
-    { label: '=' }, { label: 'Bksp', w: 2, wide: true }, { label: 'Home' },
+    { label: '=' }, { label: 'Bksp', w: 2, wide: true },
   ],
+  // QWERTY row — no nav key; PgUp is in the nav column
   [
     { label: 'Tab', w: 1.5, wide: true },
     { label: 'Q' }, { label: 'W' }, { label: 'E' }, { label: 'R' },
     { label: 'T' }, { label: 'Y' }, { label: 'U' }, { label: 'I' },
     { label: 'O' }, { label: 'P' }, { label: '[' }, { label: ']' },
-    { label: '\\', w: 1.5, wide: true }, { label: 'PgUp' },
+    { label: '\\', w: 1.5, wide: true },
   ],
+  // Home row — no nav key; PgDn is in the nav column
   [
     { label: 'Caps', w: 1.75, wide: true },
     { label: 'A' }, { label: 'S' }, { label: 'D' }, { label: 'F' },
     { label: 'G' }, { label: 'H' }, { label: 'J' }, { label: 'K' },
     { label: 'L' }, { label: ';' }, { label: "'" },
-    { label: 'Enter', w: 2.25, wide: true }, { label: 'PgDn' },
+    { label: 'Enter', w: 2.25, wide: true },
   ],
+  // Shift row — ends with ↑ (no End key; physical End is Fn+PgDn)
   [
     { label: 'Shift', w: 2.25, wide: true },
     { label: 'Z' }, { label: 'X' }, { label: 'C' }, { label: 'V' },
     { label: 'B' }, { label: 'N' }, { label: 'M' }, { label: ',' },
     { label: '.' }, { label: '/' },
-    { label: 'Shift', w: 1.75, wide: true }, { label: '↑' }, { label: 'End' },
+    { label: 'Shift', w: 1.75, wide: true },
+    { label: '↑', gapBefore: 0.25 },
   ],
+  // Bottom row — Ctrl · Win · Alt · Space · Alt · Fn · Ctrl · ← ↓ →
   [
     { label: 'Ctrl', w: 1.25, wide: true },
     { label: 'Win', w: 1.25, wide: true },
     { label: 'Alt', w: 1.25, wide: true },
     { label: 'Space', w: 6.25, wide: true },
-    { label: 'Alt' }, { label: 'Fn' },
-    { label: '←' }, { label: '↓' }, { label: '→' },
+    { label: 'Alt' }, { label: 'Fn' }, { label: 'Ctrl' },
+    { label: '←', gapBefore: 0.25 }, { label: '↓' }, { label: '→' },
   ],
 ]
 
