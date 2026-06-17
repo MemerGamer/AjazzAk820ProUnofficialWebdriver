@@ -25,6 +25,13 @@ import {
   type LightingModeName,
   type SleepTimerName,
 } from '../lib/protocol'
+import { EFFECT_DESCRIPTIONS } from '../lib/effects'
+import {
+  useLighting,
+  useSleepTimer,
+  type LightingState,
+} from '../lib/use-lighting'
+import { KeyboardPreview } from './KeyboardPreview'
 
 type TabId = 'clock' | 'lighting' | 'sleep'
 type Status = { kind: 'idle' | 'busy' | 'ok' | 'error'; message: string }
@@ -41,10 +48,20 @@ export function Configurator() {
   const [deviceName, setDeviceName] = useState('')
   const [tab, setTab] = useState<TabId>('clock')
   const [status, setStatus] = useState<Status>({ kind: 'idle', message: '' })
+  const [now, setNow] = useState(() => new Date())
+
+  const { lighting, setLighting } = useLighting()
+  const [sleep, setSleep] = useSleepTimer()
 
   // WebHID is browser-only; check after mount to stay SSR-safe.
   useEffect(() => {
     setSupported(isWebHIDSupported())
+  }, [])
+
+  // Shared clock tick for the preview's TFT and the Clock tab.
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(t)
   }, [])
 
   const busy = status.kind === 'busy'
@@ -79,12 +96,10 @@ export function Configurator() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
-      <header className="mb-8 flex items-center gap-3">
+      <header className="mb-6 flex items-center gap-3">
         <Keyboard className="h-8 w-8 text-indigo-400" />
         <div>
-          <h1 className="text-2xl font-bold text-slate-100">
-            Ajazz AK820 Pro
-          </h1>
+          <h1 className="text-2xl font-bold text-slate-100">Ajazz AK820 Pro</h1>
           <p className="text-sm text-slate-400">
             Unofficial WebHID configurator
           </p>
@@ -93,14 +108,19 @@ export function Configurator() {
 
       {!supported && <UnsupportedNotice />}
 
-      <ConnectionBar
-        supported={supported}
-        connected={connected}
-        deviceName={deviceName}
-        busy={busy}
-        onConnect={handleConnect}
-        onDisconnect={handleDisconnect}
-      />
+      <KeyboardPreview lighting={lighting} now={now} />
+      <EffectSummary lighting={lighting} />
+
+      <div className="mt-6">
+        <ConnectionBar
+          supported={supported}
+          connected={connected}
+          deviceName={deviceName}
+          busy={busy}
+          onConnect={handleConnect}
+          onDisconnect={handleDisconnect}
+        />
+      </div>
 
       <nav className="mt-6 flex gap-1 rounded-lg bg-slate-800/60 p-1">
         {TABS.map(({ id, label, icon: Icon }) => (
@@ -121,18 +141,60 @@ export function Configurator() {
       </nav>
 
       <section className="mt-4 rounded-xl border border-slate-700 bg-slate-800/40 p-6">
-        {tab === 'clock' && <ClockPanel disabled={!connected || busy} run={run} />}
-        {tab === 'lighting' && (
-          <LightingPanel disabled={!connected || busy} run={run} />
+        {tab === 'clock' && (
+          <ClockPanel disabled={!connected || busy} run={run} now={now} />
         )}
-        {tab === 'sleep' && <SleepPanel disabled={!connected || busy} run={run} />}
+        {tab === 'lighting' && (
+          <LightingPanel
+            disabled={!connected || busy}
+            run={run}
+            lighting={lighting}
+            setLighting={setLighting}
+          />
+        )}
+        {tab === 'sleep' && (
+          <SleepPanel
+            disabled={!connected || busy}
+            run={run}
+            value={sleep}
+            onChange={setSleep}
+          />
+        )}
       </section>
 
       <StatusLine status={status} />
 
       <p className="mt-6 text-center text-xs text-slate-500">
         Connect the keyboard via USB-C (not the 2.4GHz dongle). Requires a
-        Chromium-based browser.
+        Chromium-based browser. The preview shows what will be sent — the
+        keyboard can&apos;t report its own state back.
+      </p>
+    </div>
+  )
+}
+
+function EffectSummary({ lighting }: { lighting: LightingState }) {
+  return (
+    <div className="mt-3 text-center">
+      <div className="flex flex-wrap items-center justify-center gap-2 text-sm text-slate-300">
+        <span className="font-semibold text-slate-100">{lighting.mode}</span>
+        <span className="text-slate-600">·</span>
+        {lighting.rainbow ? (
+          <span>rainbow</span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5">
+            colour
+            <span
+              className="inline-block h-3 w-3 rounded-full border border-slate-600"
+              style={{ background: lighting.color }}
+            />
+          </span>
+        )}
+        <span className="text-slate-600">·</span>
+        <span>brightness {lighting.brightness}/5</span>
+      </div>
+      <p className="mt-1 text-xs text-slate-500">
+        {EFFECT_DESCRIPTIONS[lighting.mode]}
       </p>
     </div>
   )
@@ -199,20 +261,19 @@ function ConnectionBar({
   )
 }
 
-type PanelProps = {
-  disabled: boolean
-  run: (message: string, fn: () => Promise<void>) => Promise<void>
-}
+type RunFn = (message: string, fn: () => Promise<void>) => Promise<void>
 
-function ClockPanel({ disabled, run }: PanelProps) {
-  const [now, setNow] = useState(() => new Date())
+function ClockPanel({
+  disabled,
+  run,
+  now,
+}: {
+  disabled: boolean
+  run: RunFn
+  now: Date
+}) {
   const [auto, setAuto] = useState(false)
   const autoRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(t)
-  }, [])
 
   // Re-sync hourly while "auto" is on (the LCD clock drifts over time).
   useEffect(() => {
@@ -237,10 +298,15 @@ function ClockPanel({ disabled, run }: PanelProps) {
       </div>
 
       <div className="rounded-lg bg-slate-900/60 px-4 py-3 text-center">
-        <div className="font-mono text-2xl text-slate-100">
+        <div
+          className="font-mono text-2xl text-slate-100"
+          suppressHydrationWarning
+        >
           {now.toLocaleTimeString()}
         </div>
-        <div className="text-sm text-slate-400">{now.toLocaleDateString()}</div>
+        <div className="text-sm text-slate-400" suppressHydrationWarning>
+          {now.toLocaleDateString()}
+        </div>
       </div>
 
       <button
@@ -267,26 +333,29 @@ function ClockPanel({ disabled, run }: PanelProps) {
   )
 }
 
-function LightingPanel({ disabled, run }: PanelProps) {
-  const [mode, setMode] = useState<LightingModeName>('Spectrum')
-  const [color, setColor] = useState('#6366f1')
-  const [rainbow, setRainbow] = useState(true)
-  const [brightness, setBrightness] = useState(5)
-  const [speed, setSpeed] = useState(3)
-  const [direction, setDirection] = useState<DirectionName>('Right')
-
+function LightingPanel({
+  disabled,
+  run,
+  lighting,
+  setLighting,
+}: {
+  disabled: boolean
+  run: RunFn
+  lighting: LightingState
+  setLighting: (next: Partial<LightingState>) => void
+}) {
   function apply() {
-    const [r, g, b] = hexToRgb(color)
+    const [r, g, b] = hexToRgb(lighting.color)
     return run('Applying lighting', () =>
       setLightingMode({
-        mode: LightingModes[mode],
+        mode: LightingModes[lighting.mode],
         r,
         g,
         b,
-        rainbow,
-        brightness,
-        speed,
-        direction: Directions[direction],
+        rainbow: lighting.rainbow,
+        brightness: lighting.brightness,
+        speed: lighting.speed,
+        direction: Directions[lighting.direction],
       }),
     )
   }
@@ -296,16 +365,18 @@ function LightingPanel({ disabled, run }: PanelProps) {
       <div>
         <h2 className="text-lg font-semibold text-slate-100">RGB lighting</h2>
         <p className="mt-1 text-sm text-slate-400">
-          Choose an effect and tune its colour and motion.
+          Choose an effect and tune its colour and motion. The preview above
+          updates instantly; click Apply to send it to the keyboard.
         </p>
       </div>
 
       <Field label="Effect">
         <select
-          value={mode}
-          disabled={disabled}
-          onChange={(e) => setMode(e.target.value as LightingModeName)}
-          className="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 disabled:opacity-50"
+          value={lighting.mode}
+          onChange={(e) =>
+            setLighting({ mode: e.target.value as LightingModeName })
+          }
+          className="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100"
         >
           {Object.keys(LightingModes).map((name) => (
             <option key={name} value={name}>
@@ -319,18 +390,17 @@ function LightingPanel({ disabled, run }: PanelProps) {
         <Field label="Colour">
           <input
             type="color"
-            value={color}
-            disabled={disabled || rainbow}
-            onChange={(e) => setColor(e.target.value)}
+            value={lighting.color}
+            disabled={lighting.rainbow}
+            onChange={(e) => setLighting({ color: e.target.value })}
             className="h-10 w-20 cursor-pointer rounded border border-slate-600 bg-slate-900 disabled:opacity-40"
           />
         </Field>
         <label className="flex items-center gap-2 self-end pb-2 text-sm text-slate-300">
           <input
             type="checkbox"
-            checked={rainbow}
-            disabled={disabled}
-            onChange={(e) => setRainbow(e.target.checked)}
+            checked={lighting.rainbow}
+            onChange={(e) => setLighting({ rainbow: e.target.checked })}
             className="h-4 w-4 rounded border-slate-600 bg-slate-800 accent-indigo-500"
           />
           Rainbow
@@ -339,25 +409,24 @@ function LightingPanel({ disabled, run }: PanelProps) {
 
       <Slider
         label="Brightness"
-        value={brightness}
+        value={lighting.brightness}
         max={5}
-        disabled={disabled}
-        onChange={setBrightness}
+        onChange={(brightness) => setLighting({ brightness })}
       />
       <Slider
         label="Speed"
-        value={speed}
+        value={lighting.speed}
         max={5}
-        disabled={disabled}
-        onChange={setSpeed}
+        onChange={(speed) => setLighting({ speed })}
       />
 
       <Field label="Direction">
         <select
-          value={direction}
-          disabled={disabled}
-          onChange={(e) => setDirection(e.target.value as DirectionName)}
-          className="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 disabled:opacity-50"
+          value={lighting.direction}
+          onChange={(e) =>
+            setLighting({ direction: e.target.value as DirectionName })
+          }
+          className="w-full rounded-md border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100"
         >
           {Object.keys(Directions).map((name) => (
             <option key={name} value={name}>
@@ -379,9 +448,17 @@ function LightingPanel({ disabled, run }: PanelProps) {
   )
 }
 
-function SleepPanel({ disabled, run }: PanelProps) {
-  const [timer, setTimer] = useState<SleepTimerName>('5 minutes')
-
+function SleepPanel({
+  disabled,
+  run,
+  value,
+  onChange,
+}: {
+  disabled: boolean
+  run: RunFn
+  value: SleepTimerName
+  onChange: (next: SleepTimerName) => void
+}) {
   return (
     <div className="space-y-5">
       <div>
@@ -400,9 +477,8 @@ function SleepPanel({ disabled, run }: PanelProps) {
             <input
               type="radio"
               name="sleep-timer"
-              checked={timer === name}
-              disabled={disabled}
-              onChange={() => setTimer(name)}
+              checked={value === name}
+              onChange={() => onChange(name)}
               className="h-4 w-4 accent-indigo-500"
             />
             {name}
@@ -414,7 +490,7 @@ function SleepPanel({ disabled, run }: PanelProps) {
         type="button"
         disabled={disabled}
         onClick={() =>
-          run('Setting sleep timer', () => setSleepTimer(SleepTimers[timer]))
+          run('Setting sleep timer', () => setSleepTimer(SleepTimers[value]))
         }
         className="w-full rounded-md bg-indigo-500 px-4 py-3 font-medium text-white transition hover:bg-indigo-400 disabled:opacity-50"
       >
@@ -445,13 +521,11 @@ function Slider({
   label,
   value,
   max,
-  disabled,
   onChange,
 }: {
   label: string
   value: number
   max: number
-  disabled: boolean
   onChange: (n: number) => void
 }) {
   return (
@@ -461,9 +535,8 @@ function Slider({
         min={0}
         max={max}
         value={value}
-        disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-indigo-500 disabled:opacity-50"
+        className="w-full accent-indigo-500"
       />
     </Field>
   )
