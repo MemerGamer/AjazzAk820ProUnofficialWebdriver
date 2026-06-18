@@ -108,7 +108,7 @@ export function Configurator() {
 
       {!supported && <UnsupportedNotice />}
 
-      <KeyboardPreview lighting={lighting} now={now} debug />
+      <KeyboardPreview lighting={lighting} now={now} />
       <EffectSummary lighting={lighting} />
 
       <div className="mt-6">
