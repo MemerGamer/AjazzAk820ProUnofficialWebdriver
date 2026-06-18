@@ -32,10 +32,10 @@ export const KEY_ROWS: KeyDef[][] = [
   // Function row — Esc | F1-F4 | F5-F8 | F9-F12 | Del
   [
     { label: 'Esc' },
-    { label: 'F1', gapBefore: 0.5 }, { label: 'F2' }, { label: 'F3' }, { label: 'F4' },
-    { label: 'F5', gapBefore: 0.5 }, { label: 'F6' }, { label: 'F7' }, { label: 'F8' },
-    { label: 'F9', gapBefore: 0.5 }, { label: 'F10' }, { label: 'F11' }, { label: 'F12' },
-    { label: 'Del', gapBefore: 0.5 },
+    { label: 'F1', gapBefore: 0.34 }, { label: 'F2' }, { label: 'F3' }, { label: 'F4' },
+    { label: 'F5', gapBefore: 0.34 }, { label: 'F6' }, { label: 'F7' }, { label: 'F8' },
+    { label: 'F9', gapBefore: 0.34 }, { label: 'F10' }, { label: 'F11' }, { label: 'F12' },
+    { label: 'Del', gapBefore: 0.34 },
   ],
   // Number row — no nav key; Home is in the separate nav column
   [
