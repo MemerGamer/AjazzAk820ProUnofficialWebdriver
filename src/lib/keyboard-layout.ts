@@ -250,9 +250,9 @@ export const KEY_RECTS: Record<number, Rect> = {
  * with the toolbar moved out of the way so the knob is fully visible. */
 export const PANEL_RECTS: Partial<Record<PanelId, Rect>> = {
   knob: { x: 92.09, y: 4.82, w: 6.34, h: 14.74 },
-  home: { x: 92.09, y: 22.84, w: 5.64, h: 12.9 },
-  pgup: { x: 92.09, y: 37, w: 5.44, h: 12.95 },
-  pgdn: { x: 92.09, y: 51.12, w: 5.53, h: 12.66 },
+  home: { x: 92.09, y: 22.84, w: 5.53, h: 12.9 },
+  pgup: { x: 92.09, y: 37, w: 5.53, h: 12.9 },
+  pgdn: { x: 92.09, y: 51.12, w: 5.53, h: 12.9 },
   tft: { x: 92.09, y: 66.44, w: 6.01, h: 13.32 },
 }
 
