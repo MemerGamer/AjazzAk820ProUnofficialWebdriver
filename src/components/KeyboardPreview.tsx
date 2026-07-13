@@ -336,7 +336,7 @@ export function KeyboardPreview({ lighting, now }: KeyboardPreviewProps) {
                 }}
                 onKeyDown={nudge(id)}
                 tabIndex={calibrating ? 0 : -1}
-                className="flex items-end justify-center overflow-hidden rounded-[3px] bg-slate-800 text-slate-900/70 select-none"
+                className="flex items-center justify-center overflow-hidden rounded-[3px] bg-slate-800 text-slate-900/70 select-none"
                 style={{
                   ...rectStyle(r),
                   fontSize: 'calc(var(--u) * 0.32)',
@@ -345,7 +345,7 @@ export function KeyboardPreview({ lighting, now }: KeyboardPreviewProps) {
                 }}
                 title={k.label}
               >
-                <span className="pointer-events-none truncate px-[1px] pb-[1px] font-medium mix-blend-overlay">
+                <span className="pointer-events-none truncate px-[1px] font-medium mix-blend-overlay">
                   {k.label}
                 </span>
                 {calibrating && <ResizeHandle id={id} />}
@@ -365,11 +365,11 @@ export function KeyboardPreview({ lighting, now }: KeyboardPreviewProps) {
 
           {(
             [
-              { led: 'ledC', nav: 'home', label: 'Home' },
-              { led: 'ledW', nav: 'pgup', label: 'PgUp' },
-              { led: 'ledB', nav: 'pgdn', label: 'PgDn' },
+              { led: 'ledC', nav: 'home', label: 'Home', letter: 'C' },
+              { led: 'ledW', nav: 'pgup', label: 'PgUp', letter: 'W' },
+              { led: 'ledB', nav: 'pgdn', label: 'PgDn', letter: 'B' },
             ] as const
-          ).map(({ led, nav, label }) => (
+          ).map(({ led, nav, label, letter }) => (
             <div key={nav}>
               <div
                 style={{ ...rectStyle(rectFor(`p:${nav}`)), outline }}
@@ -391,7 +391,7 @@ export function KeyboardPreview({ lighting, now }: KeyboardPreviewProps) {
                 onKeyDown={nudge(`l:${led}`)}
                 tabIndex={calibrating ? 0 : -1}
               >
-                <ConnectionLed />
+                <ConnectionLed letter={letter} />
                 {calibrating && <ResizeHandle id={`l:${led}`} />}
               </div>
             </div>
@@ -421,9 +421,9 @@ const IMG_H = 375
 
 function NavKey({ label }: { label: string }) {
   return (
-    <div className="flex h-full w-full items-end justify-center overflow-hidden rounded-[3px] bg-slate-800 text-slate-500 select-none">
+    <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[3px] bg-slate-800 text-slate-500 select-none">
       <span
-        className="pb-[1px] font-medium"
+        className="font-medium"
         style={{ fontSize: 'calc(var(--u) * 0.3)', lineHeight: 1 }}
       >
         {label}
@@ -432,10 +432,16 @@ function NavKey({ label }: { label: string }) {
   )
 }
 
-function ConnectionLed() {
+function ConnectionLed({ letter }: { letter: string }) {
   return (
-    <div className="flex h-full w-full items-center justify-center">
+    <div className="flex h-full w-full flex-col items-center justify-center gap-[2px] text-slate-500 select-none">
       <span className="inline-block h-[4px] w-[4px] rounded-full bg-slate-500" />
+      <span
+        className="font-medium leading-none"
+        style={{ fontSize: 'calc(var(--u) * 0.22)' }}
+      >
+        {letter}
+      </span>
     </div>
   )
 }
@@ -450,24 +456,24 @@ function TftScreen({ now }: { now: Date }) {
   ).padStart(2, '0')}`
 
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center rounded-md border border-slate-600 bg-gradient-to-b from-slate-950 to-black font-mono text-sky-300 shadow-[0_0_10px_rgba(56,189,248,0.25)]">
+    <div className="flex h-full w-full flex-col items-center justify-center overflow-hidden rounded-md border border-slate-600 bg-gradient-to-b from-slate-950 to-black font-mono leading-none text-sky-300 shadow-[0_0_10px_rgba(56,189,248,0.25)]">
       <div
         className="font-semibold tabular-nums"
-        style={{ fontSize: 'calc(var(--u) * 0.44)' }}
+        style={{ fontSize: 'calc(var(--u) * 0.26)' }}
         suppressHydrationWarning
       >
         {hh}:{mm}
       </div>
       <div
         className="tabular-nums text-sky-400/80"
-        style={{ fontSize: 'calc(var(--u) * 0.3)' }}
+        style={{ fontSize: 'calc(var(--u) * 0.18)' }}
         suppressHydrationWarning
       >
         :{ss}
       </div>
       <div
         className="mt-[1px] text-slate-400"
-        style={{ fontSize: 'calc(var(--u) * 0.27)' }}
+        style={{ fontSize: 'calc(var(--u) * 0.15)' }}
         suppressHydrationWarning
       >
         {weekday} {date}
