@@ -259,7 +259,7 @@ export const PANEL_RECTS: Partial<Record<PanelId, Rect>> = {
 /** C/W/B connection-mode LED positions, calibrated independently of their
  * nav key. */
 export const LED_RECTS: Record<'ledC' | 'ledW' | 'ledB', Rect> = {
-  ledC: { x: 89.66, y: 31.17, w: 2, h: 3 },
-  ledW: { x: 89.62, y: 40.11, w: 2, h: 3 },
-  ledB: { x: 89.63, y: 48.73, w: 2, h: 3 },
+  ledC: { x: 89.64, y: 33.11, w: 2, h: 3 },
+  ledW: { x: 89.64, y: 41.8, w: 2, h: 3 },
+  ledB: { x: 89.64, y: 50.61, w: 2, h: 3 },
 }
