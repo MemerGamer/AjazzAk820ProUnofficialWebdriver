@@ -1,5 +1,22 @@
-import { useEffect, useRef } from 'react'
-import { KEY_ROWS, getKeys, type LayoutKey } from '../lib/keyboard-layout'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
+import { Crosshair, Download, RotateCcw } from 'lucide-react'
+import {
+  KEY_RECTS,
+  LED_RECTS,
+  PANEL_IDS,
+  PANEL_RECTS,
+  getKeys,
+  type LayoutKey,
+  type PanelId,
+  type Rect,
+} from '../lib/keyboard-layout'
 import {
   MODE_EFFECT,
   colorForKey,
@@ -12,6 +29,13 @@ import type { LightingState } from '../lib/use-lighting'
 const KEYS: LayoutKey[] = getKeys()
 const KEY_POS = KEYS.map((k) => ({ x: k.x, y: k.y, id: k.id }))
 
+const LED_IDS = ['ledC', 'ledW', 'ledB'] as const
+type LedId = (typeof LED_IDS)[number]
+
+const round = (n: number) => Math.round(n * 100) / 100
+const clamp = (n: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, n))
+
 interface KeyboardPreviewProps {
   lighting: LightingState
   now: Date
@@ -19,9 +43,21 @@ interface KeyboardPreviewProps {
 
 export function KeyboardPreview({ lighting, now }: KeyboardPreviewProps) {
   const keyEls = useRef<Array<HTMLButtonElement | null>>([])
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const lightingRef = useRef(lighting)
   const active = useRef<ActivePress[]>([])
   const startRef = useRef<number>(0)
+
+  const [calibrating, setCalibrating] = useState(false)
+  const [refOpacity, setRefOpacity] = useState(0.7)
+  const [overrides, setOverrides] = useState<Record<string, Rect>>({})
+  const dragState = useRef<{
+    id: string
+    kind: 'move' | 'resize'
+    startX: number
+    startY: number
+    startRect: Rect
+  } | null>(null)
 
   useEffect(() => {
     lightingRef.current = lighting
@@ -51,7 +87,7 @@ export function KeyboardPreview({ lighting, now }: KeyboardPreviewProps) {
         const el = keyEls.current[i]
         if (!el) continue
         const [r, g, b] = colorForKey(archetype, KEY_POS[i], params)
-        el.style.background = `rgb(${r},${g},${b})`
+        el.style.background = `rgba(${r},${g},${b},0.55)`
         const glow = (r + g + b) / 765
         el.style.boxShadow =
           glow > 0.05
@@ -95,113 +131,289 @@ export function KeyboardPreview({ lighting, now }: KeyboardPreviewProps) {
     active.current.push({ x: key.x, y: key.y, t })
   }
 
-  const ROW_GAP = 'calc(var(--u) * 0.10)'
-  const KEY_GAP = 'calc(var(--u) * 0.10)'
+  const rectFor = (id: string): Rect | undefined => {
+    if (overrides[id]) return overrides[id]
+    if (id.startsWith('k')) return KEY_RECTS[Number(id.slice(1))]
+    if (id.startsWith('p:')) return PANEL_RECTS[id.slice(2) as PanelId]
+    if (id.startsWith('l:')) return LED_RECTS[id.slice(2) as LedId]
+    return undefined
+  }
+
+  const toggleCalibrating = () => setCalibrating((v) => !v)
+
+  const onDragMove = (e: PointerEvent) => {
+    const drag = dragState.current
+    const container = containerRef.current
+    if (!drag || !container) return
+    const c = container.getBoundingClientRect()
+    const dxPct = ((e.clientX - drag.startX) / c.width) * 100
+    const dyPct = ((e.clientY - drag.startY) / c.height) * 100
+    const base = drag.startRect
+    const rect: Rect =
+      drag.kind === 'move'
+        ? {
+            ...base,
+            x: clamp(base.x + dxPct, -10, 100),
+            y: clamp(base.y + dyPct, -10, 100),
+          }
+        : {
+            ...base,
+            w: clamp(base.w + dxPct, 1, 100),
+            h: clamp(base.h + dyPct, 1, 100),
+          }
+    setOverrides((prev) => ({ ...prev, [drag.id]: rect }))
+  }
+
+  const endDrag = () => {
+    dragState.current = null
+    window.removeEventListener('pointermove', onDragMove)
+    window.removeEventListener('pointerup', endDrag)
+  }
+
+  const beginDrag =
+    (id: string, kind: 'move' | 'resize') => (e: ReactPointerEvent) => {
+      if (!calibrating) return
+      e.stopPropagation()
+      e.preventDefault()
+      const rect = rectFor(id)
+      if (!rect) return
+      dragState.current = {
+        id,
+        kind,
+        startX: e.clientX,
+        startY: e.clientY,
+        startRect: rect,
+      }
+      window.addEventListener('pointermove', onDragMove)
+      window.addEventListener('pointerup', endDrag)
+    }
+
+  const nudge = (id: string) => (e: ReactKeyboardEvent) => {
+    if (!calibrating) return
+    const rect = rectFor(id)
+    if (!rect) return
+    const step = e.shiftKey ? 1 : 0.15
+    let { x, y } = rect
+    if (e.key === 'ArrowLeft') x -= step
+    else if (e.key === 'ArrowRight') x += step
+    else if (e.key === 'ArrowUp') y -= step
+    else if (e.key === 'ArrowDown') y += step
+    else return
+    e.preventDefault()
+    setOverrides((prev) => ({ ...prev, [id]: { ...rect, x, y } }))
+  }
+
+  const resetCalibration = () => setOverrides({})
+
+  const exportRects = () => {
+    const keyRects: Record<number, Rect> = {}
+    KEYS.forEach((k) => {
+      const r = rectFor(`k${k.id}`)
+      if (r) keyRects[k.id] = { x: round(r.x), y: round(r.y), w: round(r.w), h: round(r.h) }
+    })
+    const panelRects: Partial<Record<PanelId, Rect>> = {}
+    PANEL_IDS.forEach((pid) => {
+      const r = rectFor(`p:${pid}`)
+      if (r) panelRects[pid] = { x: round(r.x), y: round(r.y), w: round(r.w), h: round(r.h) }
+    })
+    const ledRects: Partial<Record<LedId, Rect>> = {}
+    LED_IDS.forEach((lid) => {
+      const r = rectFor(`l:${lid}`)
+      if (r) ledRects[lid] = { x: round(r.x), y: round(r.y), w: round(r.w), h: round(r.h) }
+    })
+    const code = `// Percent-of-container rects captured from the calibration overlay.\nexport const KEY_RECTS: Record<number, Rect> = ${JSON.stringify(keyRects, null, 2)}\n\nexport const PANEL_RECTS: Partial<Record<PanelId, Rect>> = ${JSON.stringify(panelRects, null, 2)}\n\nexport const LED_RECTS = ${JSON.stringify(ledRects, null, 2)}\n`
+    navigator.clipboard?.writeText(code).catch(() => {})
+    console.log(code)
+    window.prompt('Layout rects (also copied to clipboard):', code)
+  }
+
+  const rectStyle = (r: Rect | undefined): CSSProperties => {
+    if (!r) return { display: 'none' }
+    return {
+      position: 'absolute',
+      left: `${r.x}%`,
+      top: `${r.y}%`,
+      width: `${r.w}%`,
+      height: `${r.h}%`,
+    }
+  }
+
+  const outline = calibrating
+    ? '1px dashed rgba(99,102,241,0.6)'
+    : undefined
+
+  const ResizeHandle = ({ id }: { id: string }) => (
+    <div
+      onPointerDown={beginDrag(id, 'resize')}
+      className="absolute -bottom-1 -right-1 h-2.5 w-2.5 cursor-nwse-resize rounded-sm bg-indigo-400"
+    />
+  )
 
   return (
-    /* The invisible img anchors the container to the calibrated 894:375 aspect
-       ratio so --u (via cqw) always matches the pixel measurements from the photo. */
-    <div
-      className="relative w-full overflow-hidden rounded-2xl border border-slate-700"
-      style={{ aspectRatio: `${IMG_W} / ${IMG_H}`, containerType: 'inline-size' }}
-    >
-      <img
-        src="/keyboard-ref.jpg"
-        aria-hidden
-        className="absolute inset-0 h-full w-full object-cover"
-        style={{ opacity: 0 }}
-      />
+    <div className="w-full">
+      {/* Toolbar lives outside the photo so it never occludes the board
+          (the knob especially sits right in the top-right corner). */}
+      <div className="mb-2 flex items-center gap-2 rounded-md border border-slate-700 bg-slate-900 p-2 text-slate-300">
+        <button
+          type="button"
+          onClick={toggleCalibrating}
+          title="Toggle calibration overlay"
+          className={`flex items-center gap-1 rounded p-1 text-xs ${calibrating ? 'bg-indigo-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+        >
+          <Crosshair size={14} /> Calibrate
+        </button>
+        {calibrating && (
+          <>
+            <span className="ml-2 text-xs">Ref photo opacity</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={refOpacity}
+              onChange={(e) => setRefOpacity(Number(e.target.value))}
+              className="h-1 w-24 accent-indigo-400"
+            />
+            <button
+              type="button"
+              onClick={exportRects}
+              title="Export rects (copies JSON to clipboard)"
+              className="ml-auto flex items-center gap-1 rounded p-1 text-xs text-slate-400 hover:text-slate-200"
+            >
+              <Download size={14} /> Export
+            </button>
+            <button
+              type="button"
+              onClick={resetCalibration}
+              title="Reset calibration"
+              className="flex items-center gap-1 rounded p-1 text-xs text-slate-400 hover:text-slate-200"
+            >
+              <RotateCcw size={14} /> Reset
+            </button>
+          </>
+        )}
+      </div>
 
+      {/* The reference photo anchors the container to its 894:375 aspect ratio
+          so percent-based rects line up with the calibrated pixel positions. */}
       <div
-        className="absolute inset-0 flex items-center justify-center bg-slate-900/80 p-3"
+        ref={containerRef}
+        className="relative w-full overflow-hidden rounded-2xl border border-slate-700"
         style={{
-          ['--u' as string]: `calc((100cqw - 24px) / ${IMG_W / 50})`,
-          gap: 'calc(var(--u) * 0.06)',
+          aspectRatio: `${IMG_W} / ${IMG_H}`,
+          containerType: 'inline-size',
+          ['--u' as string]: '5.1cqw',
         }}
       >
-        {/* ── Main key grid ── */}
-        <div className="flex flex-col" style={{ gap: ROW_GAP }}>
-          {KEY_ROWS.map((row, r) => {
-            const offset = KEY_ROWS.slice(0, r).reduce(
-              (sum, rr) => sum + rr.length,
-              0,
-            )
+        <img
+          src="/keyboard-ref.jpg"
+          aria-hidden
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ opacity: calibrating ? refOpacity : 0 }}
+        />
+
+        <div
+          className="absolute inset-0"
+          style={{ background: calibrating ? 'transparent' : 'rgba(15,23,42,0.8)' }}
+        >
+          {KEYS.map((k) => {
+            const id = `k${k.id}`
+            const r = rectFor(id)
             return (
-              <div key={r} className="flex" style={{ gap: KEY_GAP }}>
-                {row.map((k, c) => {
-                  const id = offset + c
-                  const w = k.w ?? 1
-                  return (
-                    <button
-                      key={c}
-                      type="button"
-                      ref={(el) => { keyEls.current[id] = el }}
-                      onPointerDown={() => press(KEYS[id])}
-                      onPointerEnter={(e) => { if (e.buttons > 0) press(KEYS[id]) }}
-                      className="flex items-end justify-center overflow-hidden rounded-[3px] bg-slate-800 text-slate-900/70 select-none"
-                      style={{
-                        width: `calc(var(--u) * ${w})`,
-                        height: 'var(--u)',
-                        fontSize: 'calc(var(--u) * 0.32)',
-                        lineHeight: 1,
-                        marginLeft: k.gapBefore
-                          ? `calc(var(--u) * ${k.gapBefore})`
-                          : undefined,
-                      }}
-                      title={k.label}
-                    >
-                      <span className="pointer-events-none truncate px-[1px] pb-[1px] font-medium mix-blend-overlay">
-                        {k.label}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
+              <button
+                key={id}
+                type="button"
+                ref={(el) => { keyEls.current[k.id] = el }}
+                onPointerDown={(e) => {
+                  if (calibrating) {
+                    beginDrag(id, 'move')(e)
+                    return
+                  }
+                  press(k)
+                }}
+                onPointerEnter={(e) => {
+                  if (!calibrating && e.buttons > 0) press(k)
+                }}
+                onKeyDown={nudge(id)}
+                tabIndex={calibrating ? 0 : -1}
+                className="flex items-end justify-center overflow-hidden rounded-[3px] bg-slate-800 text-slate-900/70 select-none"
+                style={{
+                  ...rectStyle(r),
+                  fontSize: 'calc(var(--u) * 0.32)',
+                  lineHeight: 1,
+                  outline,
+                }}
+                title={k.label}
+              >
+                <span className="pointer-events-none truncate px-[1px] pb-[1px] font-medium mix-blend-overlay">
+                  {k.label}
+                </span>
+                {calibrating && <ResizeHandle id={id} />}
+              </button>
             )
           })}
-        </div>
 
-        {/* ── Right panel ── */}
-        <div
-          className="flex flex-col shrink-0"
-          style={{
-            gap: ROW_GAP,
-            width: 'calc(var(--u) * 1.62)',
-          }}
-        >
           <div
-            className="flex items-center justify-center"
-            style={{ height: 'var(--u)', overflow: 'visible' }}
+            style={{ ...rectStyle(rectFor('p:knob')), overflow: 'visible', outline }}
+            onPointerDown={beginDrag('p:knob', 'move')}
+            onKeyDown={nudge('p:knob')}
+            tabIndex={calibrating ? 0 : -1}
           >
             <Knob />
+            {calibrating && <ResizeHandle id="p:knob" />}
           </div>
 
           {(
             [
-              { cwb: 'C', nav: 'Home' },
-              { cwb: 'W', nav: 'PgUp' },
-              { cwb: 'B', nav: 'PgDn' },
+              { led: 'ledC', nav: 'home', label: 'Home' },
+              { led: 'ledW', nav: 'pgup', label: 'PgUp' },
+              { led: 'ledB', nav: 'pgdn', label: 'PgDn' },
             ] as const
-          ).map(({ cwb, nav }) => (
-            <div
-              key={cwb}
-              className="flex items-center justify-between"
-              style={{ height: 'var(--u)' }}
-            >
-              <ConnectionMode label={cwb} />
-              <NavKey label={nav} />
+          ).map(({ led, nav, label }) => (
+            <div key={nav}>
+              <div
+                style={{ ...rectStyle(rectFor(`p:${nav}`)), outline }}
+                onPointerDown={beginDrag(`p:${nav}`, 'move')}
+                onKeyDown={nudge(`p:${nav}`)}
+                tabIndex={calibrating ? 0 : -1}
+              >
+                <NavKey label={label} />
+                {calibrating && <ResizeHandle id={`p:${nav}`} />}
+              </div>
+              <div
+                style={{
+                  ...rectStyle(rectFor(`l:${led}`)),
+                  outline: calibrating
+                    ? '1px dashed rgba(56,189,248,0.8)'
+                    : undefined,
+                }}
+                onPointerDown={beginDrag(`l:${led}`, 'move')}
+                onKeyDown={nudge(`l:${led}`)}
+                tabIndex={calibrating ? 0 : -1}
+              >
+                <ConnectionLed />
+                {calibrating && <ResizeHandle id={`l:${led}`} />}
+              </div>
             </div>
           ))}
 
-          <TftScreen now={now} />
+          <div
+            style={{ ...rectStyle(rectFor('p:tft')), outline }}
+            onPointerDown={beginDrag('p:tft', 'move')}
+            onKeyDown={nudge('p:tft')}
+            tabIndex={calibrating ? 0 : -1}
+          >
+            <TftScreen now={now} />
+            {calibrating && <ResizeHandle id="p:tft" />}
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-// Photo dimensions — used to set the container aspect ratio so --u (via cqw)
-// matches the 1u=50px measurements taken from the product photo.
+// Photo dimensions — used to set the container aspect ratio so rects
+// (percent of container) line up with the calibrated photo positions.
 const IMG_W = 894
 const IMG_H = 375
 
@@ -209,28 +421,21 @@ const IMG_H = 375
 
 function NavKey({ label }: { label: string }) {
   return (
-    <div
-      className="flex items-end justify-center overflow-hidden rounded-[3px] bg-slate-800 text-slate-500 select-none"
-      style={{
-        width: 'var(--u)',
-        height: 'var(--u)',
-        fontSize: 'calc(var(--u) * 0.3)',
-        lineHeight: 1,
-      }}
-    >
-      <span className="pb-[1px] font-medium">{label}</span>
+    <div className="flex h-full w-full items-end justify-center overflow-hidden rounded-[3px] bg-slate-800 text-slate-500 select-none">
+      <span
+        className="pb-[1px] font-medium"
+        style={{ fontSize: 'calc(var(--u) * 0.3)', lineHeight: 1 }}
+      >
+        {label}
+      </span>
     </div>
   )
 }
 
-function ConnectionMode({ label }: { label: string }) {
+function ConnectionLed() {
   return (
-    <div
-      className="flex items-center gap-[2px] text-slate-600"
-      style={{ fontSize: 'calc(var(--u) * 0.3)', lineHeight: 1 }}
-    >
-      <span className="inline-block h-[4px] w-[4px] rounded-full bg-slate-700" />
-      {label}
+    <div className="flex h-full w-full items-center justify-center">
+      <span className="inline-block h-[4px] w-[4px] rounded-full bg-slate-500" />
     </div>
   )
 }
@@ -245,13 +450,7 @@ function TftScreen({ now }: { now: Date }) {
   ).padStart(2, '0')}`
 
   return (
-    <div
-      className="flex flex-col items-center justify-center rounded-md border border-slate-600 bg-gradient-to-b from-slate-950 to-black font-mono text-sky-300 shadow-[0_0_10px_rgba(56,189,248,0.25)]"
-      style={{
-        /* shift row (1u) + gap (ROW_GAP = 0.10u) + bottom row (1u) = 2.10u */
-        height: 'calc(var(--u) * 2.1)',
-      }}
-    >
+    <div className="flex h-full w-full flex-col items-center justify-center rounded-md border border-slate-600 bg-gradient-to-b from-slate-950 to-black font-mono text-sky-300 shadow-[0_0_10px_rgba(56,189,248,0.25)]">
       <div
         className="font-semibold tabular-nums"
         style={{ fontSize: 'calc(var(--u) * 0.44)' }}
@@ -279,10 +478,7 @@ function TftScreen({ now }: { now: Date }) {
 
 function Knob() {
   return (
-    <div
-      className="rounded-full border border-slate-500 bg-gradient-to-br from-slate-600 to-slate-900 shadow-lg"
-      style={{ width: 'calc(var(--u) * 1.5)', height: 'calc(var(--u) * 1.5)' }}
-    >
+    <div className="h-full w-full rounded-full border border-slate-500 bg-gradient-to-br from-slate-600 to-slate-900 shadow-lg">
       <div className="mx-auto mt-[10%] h-[30%] w-[2px] rounded bg-slate-300" />
     </div>
   )
