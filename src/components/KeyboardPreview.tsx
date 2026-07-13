@@ -251,48 +251,53 @@ export function KeyboardPreview({ lighting, now }: KeyboardPreviewProps) {
 
   return (
     <div className="w-full">
-      {/* Toolbar lives outside the photo so it never occludes the board
-          (the knob especially sits right in the top-right corner). */}
-      <div className="mb-2 flex items-center gap-2 rounded-md border border-slate-700 bg-slate-900 p-2 text-slate-300">
-        <button
-          type="button"
-          onClick={toggleCalibrating}
-          title="Toggle calibration overlay"
-          className={`flex items-center gap-1 rounded p-1 text-xs ${calibrating ? 'bg-indigo-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}
-        >
-          <Crosshair size={14} /> Calibrate
-        </button>
-        {calibrating && (
-          <>
-            <span className="ml-2 text-xs">Ref photo opacity</span>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={refOpacity}
-              onChange={(e) => setRefOpacity(Number(e.target.value))}
-              className="h-1 w-24 accent-indigo-400"
-            />
-            <button
-              type="button"
-              onClick={exportRects}
-              title="Export rects (copies JSON to clipboard)"
-              className="ml-auto flex items-center gap-1 rounded p-1 text-xs text-slate-400 hover:text-slate-200"
-            >
-              <Download size={14} /> Export
-            </button>
-            <button
-              type="button"
-              onClick={resetCalibration}
-              title="Reset calibration"
-              className="flex items-center gap-1 rounded p-1 text-xs text-slate-400 hover:text-slate-200"
-            >
-              <RotateCcw size={14} /> Reset
-            </button>
-          </>
-        )}
-      </div>
+      {/* Calibration toolbar — dev-only. Lets you drag/resize keys and panel
+          elements over the reference photo to fine-tune alignment, then
+          export the resulting rects to hardcode into keyboard-layout.ts.
+          Kept in the codebase but hidden from the production build; if the
+          layout ever needs re-calibrating, run `npm run dev` to see it. */}
+      {import.meta.env.DEV && (
+        <div className="mb-2 flex items-center gap-2 rounded-md border border-slate-700 bg-slate-900 p-2 text-slate-300">
+          <button
+            type="button"
+            onClick={toggleCalibrating}
+            title="Toggle calibration overlay"
+            className={`flex items-center gap-1 rounded p-1 text-xs ${calibrating ? 'bg-indigo-500 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <Crosshair size={14} /> Calibrate
+          </button>
+          {calibrating && (
+            <>
+              <span className="ml-2 text-xs">Ref photo opacity</span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={refOpacity}
+                onChange={(e) => setRefOpacity(Number(e.target.value))}
+                className="h-1 w-24 accent-indigo-400"
+              />
+              <button
+                type="button"
+                onClick={exportRects}
+                title="Export rects (copies JSON to clipboard)"
+                className="ml-auto flex items-center gap-1 rounded p-1 text-xs text-slate-400 hover:text-slate-200"
+              >
+                <Download size={14} /> Export
+              </button>
+              <button
+                type="button"
+                onClick={resetCalibration}
+                title="Reset calibration"
+                className="flex items-center gap-1 rounded p-1 text-xs text-slate-400 hover:text-slate-200"
+              >
+                <RotateCcw size={14} /> Reset
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* The reference photo anchors the container to its 894:375 aspect ratio
           so percent-based rects line up with the calibrated pixel positions. */}
