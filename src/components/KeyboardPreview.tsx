@@ -435,7 +435,10 @@ function NavKey({ label }: { label: string }) {
 function ConnectionLed({ letter }: { letter: string }) {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-[2px] text-slate-500 select-none">
-      <span className="inline-block h-[4px] w-[4px] rounded-full bg-slate-500" />
+      <span
+        className="inline-block shrink-0 rounded-full bg-slate-500"
+        style={{ width: 4, height: 4 }}
+      />
       <span
         className="font-medium leading-none"
         style={{ fontSize: 'calc(var(--u) * 0.22)' }}
