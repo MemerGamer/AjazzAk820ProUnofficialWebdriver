@@ -249,11 +249,14 @@ export const KEY_RECTS: Record<number, Rect> = {
 /** Right-panel element positions (knob, nav keys, TFT clock), calibrated
  * with the toolbar moved out of the way so the knob is fully visible. */
 export const PANEL_RECTS: Partial<Record<PanelId, Rect>> = {
+  // home/pgup/pgdn/tft are narrower than the knob, so their x is offset to
+  // center them under the knob's horizontal midpoint rather than sharing
+  // its left edge (which looked left-leaning under the wider knob).
   knob: { x: 92.09, y: 4.82, w: 6.34, h: 14.74 },
-  home: { x: 92.09, y: 22.84, w: 5.53, h: 12.9 },
-  pgup: { x: 92.09, y: 37, w: 5.53, h: 12.9 },
-  pgdn: { x: 92.09, y: 51.12, w: 5.53, h: 12.9 },
-  tft: { x: 92.09, y: 66.44, w: 6.01, h: 13.32 },
+  home: { x: 92.5, y: 22.84, w: 5.53, h: 12.9 },
+  pgup: { x: 92.5, y: 37, w: 5.53, h: 12.9 },
+  pgdn: { x: 92.5, y: 51.12, w: 5.53, h: 12.9 },
+  tft: { x: 92.26, y: 66.44, w: 6.01, h: 13.32 },
 }
 
 /** C/W/B connection-mode LED positions, calibrated independently of their
