@@ -12,8 +12,10 @@ import {
   connect,
   disconnect,
   isWebHIDSupported,
+  isWirelessTransport,
   setLightingMode,
   setSleepTimer,
+  supportsClockAndSleep,
   syncTime,
 } from '../lib/device'
 import {
@@ -46,6 +48,8 @@ export function Configurator() {
   const [supported, setSupported] = useState(true)
   const [connected, setConnected] = useState(false)
   const [deviceName, setDeviceName] = useState('')
+  const [wireless, setWireless] = useState(false)
+  const [usbOnly, setUsbOnly] = useState(false)
   const [tab, setTab] = useState<TabId>('clock')
   const [status, setStatus] = useState<Status>({ kind: 'idle', message: '' })
   const [now, setNow] = useState(() => new Date())
@@ -66,6 +70,17 @@ export function Configurator() {
 
   const busy = status.kind === 'busy'
 
+  // The official driver streams the time to the keyboard once per second over
+  // the 2.4 GHz dongle; the screen's clock is host-driven on that link.
+  useEffect(() => {
+    if (!connected || !wireless) return
+    void syncTime().catch(() => {})
+    const t = setInterval(() => {
+      void syncTime().catch(() => {})
+    }, 1000)
+    return () => clearInterval(t)
+  }, [connected, wireless])
+
   async function run(message: string, fn: () => Promise<void>) {
     setStatus({ kind: 'busy', message })
     try {
@@ -84,6 +99,8 @@ export function Configurator() {
       const dev = await connect()
       setConnected(true)
       setDeviceName(dev.productName || 'Ajazz AK820 Pro')
+      setWireless(isWirelessTransport())
+      setUsbOnly(!supportsClockAndSleep())
     })
   }
 
@@ -91,6 +108,8 @@ export function Configurator() {
     await disconnect()
     setConnected(false)
     setDeviceName('')
+    setWireless(false)
+    setUsbOnly(false)
     setStatus({ kind: 'idle', message: '' })
   }
 
@@ -116,11 +135,19 @@ export function Configurator() {
           supported={supported}
           connected={connected}
           deviceName={deviceName}
+          wireless={wireless}
           busy={busy}
           onConnect={handleConnect}
           onDisconnect={handleDisconnect}
         />
       </div>
+
+      {connected && wireless && (
+        <div className="mt-3 rounded-lg border border-emerald-600/40 bg-emerald-950/30 px-4 py-2 text-xs text-emerald-200">
+          2.4 GHz dongle connected — lighting, clock sync and the sleep timer
+          all work wirelessly.
+        </div>
+      )}
 
       <nav className="mt-6 flex gap-1 rounded-lg bg-slate-800/60 p-1">
         {TABS.map(({ id, label, icon: Icon }) => (
@@ -142,7 +169,13 @@ export function Configurator() {
 
       <section className="mt-4 rounded-xl border border-slate-700 bg-slate-800/40 p-6">
         {tab === 'clock' && (
-          <ClockPanel disabled={!connected || busy} run={run} now={now} />
+          <ClockPanel
+            disabled={!connected || busy}
+            usbOnly={usbOnly}
+            wireless={wireless}
+            run={run}
+            now={now}
+          />
         )}
         {tab === 'lighting' && (
           <LightingPanel
@@ -155,6 +188,7 @@ export function Configurator() {
         {tab === 'sleep' && (
           <SleepPanel
             disabled={!connected || busy}
+            usbOnly={usbOnly}
             run={run}
             value={sleep}
             onChange={setSleep}
@@ -165,9 +199,9 @@ export function Configurator() {
       <StatusLine status={status} />
 
       <p className="mt-6 text-center text-xs text-slate-500">
-        Connect the keyboard via USB-C (not the 2.4GHz dongle). Requires a
-        Chromium-based browser. The preview shows what will be sent — the
-        keyboard can&apos;t report its own state back.
+        Works over USB-C and the 2.4 GHz dongle. Requires a Chromium-based
+        browser. The preview shows what will be sent — the keyboard can&apos;t
+        report its own state back.
       </p>
     </div>
   )
@@ -213,6 +247,7 @@ function ConnectionBar({
   supported,
   connected,
   deviceName,
+  wireless,
   busy,
   onConnect,
   onDisconnect,
@@ -220,6 +255,7 @@ function ConnectionBar({
   supported: boolean
   connected: boolean
   deviceName: string
+  wireless: boolean
   busy: boolean
   onConnect: () => void
   onDisconnect: () => void
@@ -235,6 +271,11 @@ function ConnectionBar({
         <span className="text-slate-300">
           {connected ? deviceName : 'Not connected'}
         </span>
+        {connected && wireless && (
+          <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
+            2.4 GHz
+          </span>
+        )}
       </div>
       {connected ? (
         <button
@@ -265,27 +306,38 @@ type RunFn = (message: string, fn: () => Promise<void>) => Promise<void>
 
 function ClockPanel({
   disabled,
+  usbOnly,
+  wireless,
   run,
   now,
 }: {
   disabled: boolean
+  usbOnly: boolean
+  wireless: boolean
   run: RunFn
   now: Date
 }) {
   const [auto, setAuto] = useState(false)
   const autoRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  // Re-sync hourly while "auto" is on (the LCD clock drifts over time).
+  // `run` is re-created on every parent render (the clock ticks once a second),
+  // so keeping it in a ref stops the hourly interval from being reset forever.
+  const runRef = useRef(run)
   useEffect(() => {
-    if (!auto || disabled) return
+    runRef.current = run
+  }, [run])
+
+  // Wired: re-sync hourly while "auto" is on (the LCD clock drifts over time).
+  // Wireless streams every second from `Configurator`, so this is unnecessary.
+  useEffect(() => {
+    if (!auto || disabled || usbOnly || wireless) return
     autoRef.current = setInterval(
-      () => run('Auto-syncing clock', () => syncTime()),
+      () => runRef.current('Auto-syncing clock', () => syncTime()),
       60 * 60 * 1000,
     )
     return () => {
       if (autoRef.current) clearInterval(autoRef.current)
     }
-  }, [auto, disabled, run])
+  }, [auto, disabled, usbOnly, wireless])
 
   return (
     <div className="space-y-5">
@@ -311,7 +363,7 @@ function ClockPanel({
 
       <button
         type="button"
-        disabled={disabled}
+        disabled={disabled || usbOnly}
         onClick={() => run('Syncing clock', () => syncTime())}
         className="flex w-full items-center justify-center gap-2 rounded-md bg-indigo-500 px-4 py-3 font-medium text-white transition hover:bg-indigo-400 disabled:opacity-50"
       >
@@ -319,16 +371,29 @@ function ClockPanel({
         Sync to system time
       </button>
 
-      <label className="flex items-center gap-2 text-sm text-slate-300">
-        <input
-          type="checkbox"
-          checked={auto}
-          disabled={disabled}
-          onChange={(e) => setAuto(e.target.checked)}
-          className="h-4 w-4 rounded border-slate-600 bg-slate-800 accent-indigo-500"
-        />
-        Re-sync automatically every hour
-      </label>
+      {usbOnly && (
+        <p className="text-xs text-amber-300">
+          Clock sync is not available on this wired interface yet.
+        </p>
+      )}
+
+      {wireless ? (
+        <p className="text-xs text-emerald-300">
+          Over 2.4 GHz the time is streamed to the keyboard every second while
+          this page is open.
+        </p>
+      ) : (
+        <label className="flex items-center gap-2 text-sm text-slate-300">
+          <input
+            type="checkbox"
+            checked={auto}
+            disabled={disabled || usbOnly}
+            onChange={(e) => setAuto(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-600 bg-slate-800 accent-indigo-500"
+          />
+          Re-sync automatically every hour
+        </label>
+      )}
     </div>
   )
 }
@@ -450,11 +515,13 @@ function LightingPanel({
 
 function SleepPanel({
   disabled,
+  usbOnly,
   run,
   value,
   onChange,
 }: {
   disabled: boolean
+  usbOnly: boolean
   run: RunFn
   value: SleepTimerName
   onChange: (next: SleepTimerName) => void
@@ -488,7 +555,7 @@ function SleepPanel({
 
       <button
         type="button"
-        disabled={disabled}
+        disabled={disabled || usbOnly}
         onClick={() =>
           run('Setting sleep timer', () => setSleepTimer(SleepTimers[value]))
         }
@@ -496,6 +563,12 @@ function SleepPanel({
       >
         Apply sleep timer
       </button>
+
+      {usbOnly && (
+        <p className="text-xs text-amber-300">
+          The sleep timer is not available on this wired interface yet.
+        </p>
+      )}
     </div>
   )
 }

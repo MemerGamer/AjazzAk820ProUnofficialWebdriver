@@ -1,6 +1,17 @@
-# Grant the logged-in desktop user access to the wired Ajazz AK820 Pro
-# (Microdia/SONiX, 0c45:8009) HID interfaces, so Chrome/WebHID can open it.
+# Grant the logged-in desktop user access to the Ajazz AK820 Pro — both the
+# wired keyboard (Microdia/SONiX 0c45:8009, some units 0c45:800a) and the
+# 2.4 GHz dongle (Microdia 0c45:fdfd) — so Chrome/WebHID can open them.
+#
 # Install:
 #   sudo cp udev/99-ajazz-ak820pro.rules /etc/udev/rules.d/
 #   sudo udevadm control --reload-rules && sudo udevadm trigger
+
+# Wired keyboard + dongle: HID nodes (WebHID endpoint)
 KERNEL=="hidraw*", ATTRS{idVendor}=="0c45", ATTRS{idProduct}=="8009", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0c45", ATTRS{idProduct}=="800a", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0c45", ATTRS{idProduct}=="fdfd", MODE="0660", GROUP="input", TAG+="uaccess"
+
+# Raw USB device access (libusb / native tools)
+SUBSYSTEM=="usb", ATTR{idVendor}=="0c45", ATTR{idProduct}=="8009", MODE="0666"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0c45", ATTR{idProduct}=="800a", MODE="0666"
+SUBSYSTEM=="usb", ATTR{idVendor}=="0c45", ATTR{idProduct}=="fdfd", MODE="0666"
